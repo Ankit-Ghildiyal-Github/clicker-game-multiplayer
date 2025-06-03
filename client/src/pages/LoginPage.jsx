@@ -15,18 +15,18 @@ const LoginPage = () => {
       password: Yup.string().required("Required"),
     }),
     onSubmit: async (values, { setSubmitting, setErrors }) => {
-      try {
-        // Replace with your backend endpoint
-        const res = await axios.post("/api/auth/login", values);
-        // Save token, redirect, etc.
-        localStorage.setItem("token", res.data.token);
-        navigate("/dashboard"); // or wherever
-      } catch (err) {
-        setErrors({ email: "Invalid email or password" });
-      } finally {
-        setSubmitting(false);
-      }
-    },
+  try {
+    const res = await axios.post("/api/auth/login", values);
+    localStorage.setItem("token", res.data.token);
+    // Use values.email if you want to pass the entered email
+    navigate("/landing", { state: { email: values.email } });
+    // Or, if your API returns the email: navigate("/landing", { state: { email: res.data.email } });
+  } catch (err) {
+    setErrors({ email: "Invalid email or password" });
+  } finally {
+    setSubmitting(false);
+  }
+},
   });
 
   return (
