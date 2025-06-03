@@ -33,6 +33,23 @@ async function createUser(email, hashedPassword) {
   return res.rows[0];
 }
 
+// JWT Authentication Middleware
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Authorization header missing or malformed" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; // Attach user info to request
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+}
+
 // POST /api/auth/register
 router.post("/register", async (req, res) => {
   const { email, password } = req.body;
@@ -78,8 +95,8 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// GET /api/auth/logged-in-users
-router.get("/all-users", async (req, res) => {
+// GET /api/auth/all-users (Protected)
+router.get("/all-users", authenticateJWT, async (req, res) => {
   try {
     // Get emails of logged-in users
     const query = `SELECT id, email FROM user_credentials`;
@@ -90,4 +107,5 @@ router.get("/all-users", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 module.exports = router;
