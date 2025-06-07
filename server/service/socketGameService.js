@@ -1,14 +1,15 @@
 const { Server } = require("socket.io");
+// If you want to use uuid for unique room ids, uncomment the next line and install uuid package
+// const { v4: uuidv4 } = require("uuid");
+
+const GRID_SIZE = 5;
+const MAX_CHANCES = 5;
 
 function getRandomCell(gridSize) {
   const row = Math.floor(Math.random() * gridSize);
   const col = Math.floor(Math.random() * gridSize);
   return { row, col };
 }
-
-const GRID_SIZE = 5;
-const MAX_CHANCES = 5;
-const DELAY_MS = 3000;
 
 function createGameRoom(roomId) {
   return {
@@ -26,8 +27,55 @@ function createGameRoom(roomId) {
 
 function setupSocketGame(io) {
   const rooms = {};
+  const waitingQueue = []; // For random matchmaking
 
   io.on("connection", (socket) => {
+    // --- RANDOM MATCHMAKING ---
+    socket.on("findRandomMatch", ({ username }) => {
+      // Check if already in queue
+      if (waitingQueue.find((entry) => entry.socket.id === socket.id)) {
+        return;
+      }
+      waitingQueue.push({ socket, username });
+
+      if (waitingQueue.length >= 2) {
+        // Match two players
+        const player1 = waitingQueue.shift();
+        const player2 = waitingQueue.shift();
+
+        // Generate a unique roomId (use uuid or timestamp)
+        // const roomId = uuidv4();
+        const roomId = "room_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+
+        rooms[roomId] = createGameRoom(roomId);
+        const room = rooms[roomId];
+
+        // Add both players to the room
+        [player1, player2].forEach((player) => {
+          room.players.push({ id: player.socket.id, username: player.username });
+          room.scores[player.socket.id] = 0;
+          room.reactionTimes[player.socket.id] = [];
+          room.chances[player.socket.id] = 0;
+          player.socket.join(roomId);
+        });
+
+        // Notify both players of the match and room assignment
+        io.to(roomId).emit("matched", { roomId, players: room.players.map((p) => p.username) });
+
+        // Start the game
+        room.state = "running";
+        room.round = 1;
+        setTimeout(() => {
+          startNewRound(io, roomId, room);
+        }, 1000);
+        io.to(roomId).emit("gameStart");
+      } else {
+        // Notify the user they're waiting for a match
+        socket.emit("waitingForMatch");
+      }
+    });
+
+    // --- JOIN BY ROOM ID ---
     socket.on("joinRoom", ({ roomId, username }) => {
       if (!rooms[roomId]) {
         rooms[roomId] = createGameRoom(roomId);
@@ -105,6 +153,11 @@ function setupSocketGame(io) {
         } else {
           io.to(roomId).emit("playerLeft");
         }
+      }
+      // Remove from waiting queue if present
+      const idx = waitingQueue.findIndex((entry) => entry.socket.id === socket.id);
+      if (idx !== -1) {
+        waitingQueue.splice(idx, 1);
       }
     });
   });

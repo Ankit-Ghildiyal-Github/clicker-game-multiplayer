@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 
 const GRID_SIZE = 5;
@@ -7,6 +7,7 @@ const MAX_CHANCES = 5;
 const socket = io("http://localhost:5000"); // Adjust port as needed
 
 const ReactionGridGame = () => {
+  // Core game state
   const [username, setUsername] = useState("");
   const [roomId, setRoomId] = useState("");
   const [joined, setJoined] = useState(false);
@@ -18,43 +19,108 @@ const ReactionGridGame = () => {
   const [round, setRound] = useState(1);
   const [gameEnded, setGameEnded] = useState(false);
 
+  // Random matchmaking state
+  const [isRandomMatching, setIsRandomMatching] = useState(false);
+  const [matchedRoomId, setMatchedRoomId] = useState(null);
+  const [waitingMsg, setWaitingMsg] = useState("");
+
+  // Winner state
+  const [winner, setWinner] = useState(null);
+  const [myAvg, setMyAvg] = useState(null);
+  const [opponentAvg, setOpponentAvg] = useState(null);
+
+  // Used to force a full reset of all state on Play Again
+  const [resetKey, setResetKey] = useState(0);
+
   useEffect(() => {
     socket.on("playersUpdate", ({ players }) => {
       setPlayers(players);
     });
+
     socket.on("gameStart", () => {
       setGameStarted(true);
       setGameEnded(false);
       setMyReactionTimes([]);
       setOpponentReactionTimes([]);
       setRound(1);
+      setWaitingMsg("");
+      setWinner(null);
+      setMyAvg(null);
+      setOpponentAvg(null);
     });
+
     socket.on("newLitCell", ({ litCell, round }) => {
       setLitCell(litCell);
       setRound(round);
     });
-    socket.on("playerReacted", ({ playerId, username, reactionTime }) => {
-      if (username === players[0]) {
+
+    socket.on("playerReacted", ({ playerId, username: reactedUsername, reactionTime }) => {
+      if (playerId === socket.id) {
         setMyReactionTimes((prev) => [...prev, reactionTime]);
       } else {
         setOpponentReactionTimes((prev) => [...prev, reactionTime]);
       }
     });
-    socket.on("gameOver", ({ reactionTimes, players }) => {
+
+    socket.on("gameOver", ({ reactionTimes, players: serverPlayers }) => {
       setGameEnded(true);
       setGameStarted(false);
-      setMyReactionTimes(reactionTimes[socket.id] || []);
-      setOpponentReactionTimes(
-        players
-          .filter((p) => p.id !== socket.id)
-          .map((p) => reactionTimes[p.id] || [])[0] || []
-      );
+
+      // Find my and opponent's id
+      const myId = socket.id;
+      const opponent = serverPlayers.find((p) => p.id !== myId);
+      const myTimes = reactionTimes[myId] || [];
+      const opponentTimes = opponent ? reactionTimes[opponent.id] || [] : [];
+
+      setMyReactionTimes(myTimes);
+      setOpponentReactionTimes(opponentTimes);
+
+      // Calculate averages
+      const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const myAvgVal = avg(myTimes);
+      const opponentAvgVal = avg(opponentTimes);
+
+      setMyAvg(myAvgVal);
+      setOpponentAvg(opponentAvgVal);
+
+      // Determine winner
+      if (myAvgVal !== null && opponentAvgVal !== null) {
+        if (myAvgVal < opponentAvgVal) {
+          setWinner("me");
+        } else if (myAvgVal > opponentAvgVal) {
+          setWinner("opponent");
+        } else {
+          setWinner("draw");
+        }
+      } else {
+        setWinner(null);
+      }
     });
+
     socket.on("playerLeft", () => {
       alert("Opponent left the game.");
       setGameStarted(false);
       setGameEnded(true);
+      setWaitingMsg("");
+      setWinner(null);
+      setMyAvg(null);
+      setOpponentAvg(null);
     });
+
+    socket.on("waitingForMatch", () => {
+      setIsRandomMatching(true);
+      setWaitingMsg("Waiting for another player to join...");
+    });
+
+    socket.on("matched", ({ roomId, players: matchedPlayers }) => {
+      setMatchedRoomId(roomId);
+      setRoomId(roomId);
+      setPlayers(matchedPlayers);
+      setJoined(true);
+      setIsRandomMatching(false);
+      setWaitingMsg("");
+    });
+
     return () => {
       socket.off("playersUpdate");
       socket.off("gameStart");
@@ -62,42 +128,118 @@ const ReactionGridGame = () => {
       socket.off("playerReacted");
       socket.off("gameOver");
       socket.off("playerLeft");
+      socket.off("waitingForMatch");
+      socket.off("matched");
     };
-  }, [players]);
+  // eslint-disable-next-line
+  }, [players, resetKey]);
 
   const handleJoinRoom = () => {
     if (username && roomId) {
       socket.emit("joinRoom", { roomId, username });
       setJoined(true);
+      setIsRandomMatching(false);
+      setWaitingMsg("");
+    }
+  };
+
+  const handleFindRandomMatch = () => {
+    if (username) {
+      socket.emit("findRandomMatch", { username });
+      setIsRandomMatching(true);
+      setJoined(false);
+      setWaitingMsg("Looking for a random player...");
+      setRoomId("");
+      setMatchedRoomId(null);
     }
   };
 
   const handleCellClick = (row, col) => {
     if (!gameStarted || gameEnded) return;
     if (litCell && row === litCell.row && col === litCell.col) {
-      socket.emit("cellClicked", { roomId, row, col });
-      setLitCell(null); // Prevent double click
+      const activeRoomId = matchedRoomId || roomId;
+      socket.emit("cellClicked", { roomId: activeRoomId, row, col });
+      setLitCell(null);
     }
   };
 
-  // ... Render logic for room join, player list, grid, reaction times, etc.
+  const handlePlayAgain = () => {
+    // Reset all state to initial values and increment resetKey to force useEffect to re-run
+    setUsername("");
+    setRoomId("");
+    setJoined(false);
+    setPlayers([]);
+    setGameStarted(false);
+    setLitCell(null);
+    setMyReactionTimes([]);
+    setOpponentReactionTimes([]);
+    setRound(1);
+    setGameEnded(false);
+    setIsRandomMatching(false);
+    setMatchedRoomId(null);
+    setWaitingMsg("");
+    setWinner(null);
+    setMyAvg(null);
+    setOpponentAvg(null);
+    setResetKey(prev => prev + 1);
+  };
+
+  const renderJoinSection = () => (
+    <div>
+      <input
+        placeholder="Your Name"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        disabled={joined || isRandomMatching}
+      />
+      <input
+        placeholder="Room ID"
+        value={roomId}
+        onChange={(e) => setRoomId(e.target.value)}
+        disabled={joined || isRandomMatching}
+      />
+      <button onClick={handleJoinRoom} disabled={!username || !roomId || joined || isRandomMatching}>
+        Join Room
+      </button>
+      <span style={{ margin: "0 10px" }}>or</span>
+      <button onClick={handleFindRandomMatch} disabled={!username || joined || isRandomMatching}>
+        Find Random Match
+      </button>
+      {waitingMsg && <div style={{ marginTop: 10, color: "#888" }}>{waitingMsg}</div>}
+    </div>
+  );
+
+  const renderGameOver = () => (
+    <div>
+      <h3>Game Over!</h3>
+      <div>
+        <strong>Your Reaction Times:</strong> {myReactionTimes.join(", ")}
+      </div>
+      <div>
+        <strong>Opponent Reaction Times:</strong> {opponentReactionTimes.join(", ")}
+      </div>
+      <div>
+        <strong>Your Average:</strong> {myAvg !== null ? myAvg.toFixed(2) + " ms" : "N/A"}
+      </div>
+      <div>
+        <strong>Opponent Average:</strong> {opponentAvg !== null ? opponentAvg.toFixed(2) + " ms" : "N/A"}
+      </div>
+      <div style={{ marginTop: 10, fontWeight: "bold", fontSize: "1.2em" }}>
+        {winner === "me" && "🎉 You won!"}
+        {winner === "opponent" && "😢 You lost!"}
+        {winner === "draw" && "🤝 It's a draw!"}
+        {winner === null && ""}
+      </div>
+      <button style={{ marginTop: 20 }} onClick={handlePlayAgain}>
+        Play Again
+      </button>
+    </div>
+  );
 
   return (
     <div>
-      {!joined ? (
-        <div>
-          <input
-            placeholder="Your Name"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            placeholder="Room ID"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-          />
-          <button onClick={handleJoinRoom}>Join Room</button>
-        </div>
+      {!joined && !isRandomMatching ? (
+        renderJoinSection()
       ) : (
         <div>
           <div>
@@ -139,17 +281,15 @@ const ReactionGridGame = () => {
               </div>
             </>
           ) : gameEnded ? (
-            <div>
-              <h3>Game Over!</h3>
-              <div>
-                <strong>Your Reaction Times:</strong> {myReactionTimes.join(", ")}
-              </div>
-              <div>
-                <strong>Opponent Reaction Times:</strong> {opponentReactionTimes.join(", ")}
-              </div>
-            </div>
+            renderGameOver()
           ) : (
-            <div>Waiting for another player...</div>
+            <div>
+              {waitingMsg ? (
+                <div style={{ marginTop: 10, color: "#888" }}>{waitingMsg}</div>
+              ) : (
+                <div>Waiting for another player...</div>
+              )}
+            </div>
           )}
         </div>
       )}
