@@ -1,10 +1,23 @@
-import React, { useState, useEffect } from "react";
-import { io } from "socket.io-client";
+/**
+ * ReactionGridGame.jsx
+ *
+ * Main game logic and state orchestration for the Reaction Grid Game.
+ * This version uses the custom useMultiplayerSocket hook for multiplayer socket logic.
+ * UI is modularized into JoinSection, GameGrid, and GameOverPanel.
+ */
+
+import React, { useState, useEffect, useRef } from "react";
+import JoinSection from "../components/JoinSection";
+import GameGrid from "../components/GameGrid";
+import GameOverPanel from "../components/GameOverPanel";
+import useMultiplayerSocket from "../hooks/useMultiplayerSocket";
 
 const GRID_SIZE = 5;
 const MAX_CHANCES = 5;
 
-const socket = io(`${window.location.protocol}//${window.location.hostname}:5000`); // Adjust port as needed
+const SOLO_MODE = "solo";
+const MULTI_ROOM_MODE = "room";
+const MULTI_RANDOM_MODE = "random";
 
 const ReactionGridGame = () => {
   // Core game state
@@ -19,6 +32,9 @@ const ReactionGridGame = () => {
   const [round, setRound] = useState(1);
   const [gameEnded, setGameEnded] = useState(false);
 
+  // Game mode state
+  const [gameMode, setGameMode] = useState(null);
+
   // Random matchmaking state
   const [isRandomMatching, setIsRandomMatching] = useState(false);
   const [matchedRoomId, setMatchedRoomId] = useState(null);
@@ -32,110 +48,57 @@ const ReactionGridGame = () => {
   // Used to force a full reset of all state on Play Again
   const [resetKey, setResetKey] = useState(0);
 
+  // --- SOLO MODE state ---
+  const [soloLitTimeout, setSoloLitTimeout] = useState(null);
+  const soloStartTimeRef = useRef(null);
+
+  // --- Multiplayer socket logic via custom hook ---
+  const socket = useMultiplayerSocket({
+    enabled: gameMode !== SOLO_MODE,
+    resetKey,
+    setPlayers,
+    setGameStarted,
+    setGameEnded,
+    setMyReactionTimes,
+    setOpponentReactionTimes,
+    setRound,
+    setLitCell, // <-- Pass setLitCell to the hook
+    setWaitingMsg,
+    setWinner,
+    setMyAvg,
+    setOpponentAvg,
+    setMatchedRoomId,
+    setRoomId,
+    setJoined,
+    setIsRandomMatching,
+  });
+
+  // --- SOLO MODE logic ---
   useEffect(() => {
-    socket.on("playersUpdate", ({ players }) => {
-      setPlayers(players);
-    });
-
-    socket.on("gameStart", () => {
-      setGameStarted(true);
-      setGameEnded(false);
-      setMyReactionTimes([]);
-      setOpponentReactionTimes([]);
-      setRound(1);
-      setWaitingMsg("");
-      setWinner(null);
-      setMyAvg(null);
-      setOpponentAvg(null);
-    });
-
-    socket.on("newLitCell", ({ litCell, round }) => {
-      setLitCell(litCell);
-      setRound(round);
-    });
-
-    socket.on("playerReacted", ({ playerId, username: reactedUsername, reactionTime }) => {
-      if (playerId === socket.id) {
-        setMyReactionTimes((prev) => [...prev, reactionTime]);
-      } else {
-        setOpponentReactionTimes((prev) => [...prev, reactionTime]);
+    if (gameMode === SOLO_MODE && gameStarted && !gameEnded) {
+      // Start the round: after a random delay, light a cell
+      if (round <= MAX_CHANCES) {
+        const delay = 700 + Math.random() * 1300; // 700ms to 2000ms
+        const timeout = setTimeout(() => {
+          // Pick a random cell
+          const row = Math.floor(Math.random() * GRID_SIZE);
+          const col = Math.floor(Math.random() * GRID_SIZE);
+          setLitCell({ row, col });
+          soloStartTimeRef.current = Date.now();
+        }, delay);
+        setSoloLitTimeout(timeout);
       }
-    });
-
-    socket.on("gameOver", ({ reactionTimes, players: serverPlayers }) => {
-      setGameEnded(true);
-      setGameStarted(false);
-
-      // Find my and opponent's id
-      const myId = socket.id;
-      const opponent = serverPlayers.find((p) => p.id !== myId);
-      const myTimes = reactionTimes[myId] || [];
-      const opponentTimes = opponent ? reactionTimes[opponent.id] || [] : [];
-
-      setMyReactionTimes(myTimes);
-      setOpponentReactionTimes(opponentTimes);
-
-      // Calculate averages
-      const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const myAvgVal = avg(myTimes);
-      const opponentAvgVal = avg(opponentTimes);
-
-      setMyAvg(myAvgVal);
-      setOpponentAvg(opponentAvgVal);
-
-      // Determine winner
-      if (myAvgVal !== null && opponentAvgVal !== null) {
-        if (myAvgVal < opponentAvgVal) {
-          setWinner("me");
-        } else if (myAvgVal > opponentAvgVal) {
-          setWinner("opponent");
-        } else {
-          setWinner("draw");
-        }
-      } else {
-        setWinner(null);
-      }
-    });
-
-    socket.on("playerLeft", () => {
-      alert("Opponent left the game.");
-      setGameStarted(false);
-      setGameEnded(true);
-      setWaitingMsg("");
-      setWinner(null);
-      setMyAvg(null);
-      setOpponentAvg(null);
-    });
-
-    socket.on("waitingForMatch", () => {
-      setIsRandomMatching(true);
-      setWaitingMsg("Waiting for another player to join...");
-    });
-
-    socket.on("matched", ({ roomId, players: matchedPlayers }) => {
-      setMatchedRoomId(roomId);
-      setRoomId(roomId);
-      setPlayers(matchedPlayers);
-      setJoined(true);
-      setIsRandomMatching(false);
-      setWaitingMsg("");
-    });
-
+    }
     return () => {
-      socket.off("playersUpdate");
-      socket.off("gameStart");
-      socket.off("newLitCell");
-      socket.off("playerReacted");
-      socket.off("gameOver");
-      socket.off("playerLeft");
-      socket.off("waitingForMatch");
-      socket.off("matched");
+      if (soloLitTimeout) clearTimeout(soloLitTimeout);
     };
-  // eslint-disable-next-line
-  }, [players, resetKey]);
+    // eslint-disable-next-line
+  }, [gameMode, gameStarted, round, resetKey]);
 
+  // --- Handlers ---
   const handleJoinRoom = () => {
     if (username && roomId) {
+      setGameMode(MULTI_ROOM_MODE);
       socket.emit("joinRoom", { roomId, username });
       setJoined(true);
       setIsRandomMatching(false);
@@ -145,6 +108,7 @@ const ReactionGridGame = () => {
 
   const handleFindRandomMatch = () => {
     if (username) {
+      setGameMode(MULTI_RANDOM_MODE);
       socket.emit("findRandomMatch", { username });
       setIsRandomMatching(true);
       setJoined(false);
@@ -154,17 +118,51 @@ const ReactionGridGame = () => {
     }
   };
 
+  const handleStartSolo = () => {
+    setGameMode(SOLO_MODE);
+    setGameStarted(true);
+    setGameEnded(false);
+    setMyReactionTimes([]);
+    setOpponentReactionTimes([]);
+    setRound(1);
+    setLitCell(null);
+    setWinner(null);
+    setMyAvg(null);
+    setOpponentAvg(null);
+    setJoined(true);
+    setWaitingMsg("");
+  };
+
   const handleCellClick = (row, col) => {
-    if (!gameStarted || gameEnded) return;
-    if (litCell && row === litCell.row && col === litCell.col) {
-      const activeRoomId = matchedRoomId || roomId;
-      socket.emit("cellClicked", { roomId: activeRoomId, row, col });
-      setLitCell(null);
+    if (gameEnded) return;
+
+    if (gameMode === SOLO_MODE) {
+      if (litCell && row === litCell.row && col === litCell.col) {
+        const reactionTime = Date.now() - soloStartTimeRef.current;
+        setMyReactionTimes((prev) => [...prev, reactionTime]);
+        setLitCell(null);
+        if (round < MAX_CHANCES) {
+          setRound((prev) => prev + 1);
+        } else {
+          // Game over in solo mode
+          setGameEnded(true);
+          setGameStarted(false);
+          const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+          const myAvgVal = avg([...myReactionTimes, reactionTime]);
+          setMyAvg(myAvgVal);
+        }
+      }
+    } else {
+      if (!gameStarted || gameEnded) return;
+      if (litCell && row === litCell.row && col === litCell.col) {
+        const activeRoomId = matchedRoomId || roomId;
+        socket.emit("cellClicked", { roomId: activeRoomId, row, col });
+        setLitCell(null);
+      }
     }
   };
 
   const handlePlayAgain = () => {
-    // Reset all state to initial values and increment resetKey to force useEffect to re-run
     setUsername("");
     setRoomId("");
     setJoined(false);
@@ -181,113 +179,72 @@ const ReactionGridGame = () => {
     setWinner(null);
     setMyAvg(null);
     setOpponentAvg(null);
+    setGameMode(null);
     setResetKey(prev => prev + 1);
   };
 
-  const renderJoinSection = () => (
-    <div>
-      <input
-        placeholder="Your Name"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        disabled={joined || isRandomMatching}
-      />
-      <input
-        placeholder="Room ID"
-        value={roomId}
-        onChange={(e) => setRoomId(e.target.value)}
-        disabled={joined || isRandomMatching}
-      />
-      <button onClick={handleJoinRoom} disabled={!username || !roomId || joined || isRandomMatching}>
-        Join Room
-      </button>
-      <span style={{ margin: "0 10px" }}>or</span>
-      <button onClick={handleFindRandomMatch} disabled={!username || joined || isRandomMatching}>
-        Find Random Match
-      </button>
-      {waitingMsg && <div style={{ marginTop: 10, color: "#888" }}>{waitingMsg}</div>}
-    </div>
-  );
-
-  const renderGameOver = () => (
-    <div>
-      <h3>Game Over!</h3>
-      <div>
-        <strong>Your Reaction Times:</strong> {myReactionTimes.join(", ")}
-      </div>
-      <div>
-        <strong>Opponent Reaction Times:</strong> {opponentReactionTimes.join(", ")}
-      </div>
-      <div>
-        <strong>Your Average:</strong> {myAvg !== null ? myAvg.toFixed(2) + " ms" : "N/A"}
-      </div>
-      <div>
-        <strong>Opponent Average:</strong> {opponentAvg !== null ? opponentAvg.toFixed(2) + " ms" : "N/A"}
-      </div>
-      <div style={{ marginTop: 10, fontWeight: "bold", fontSize: "1.2em" }}>
-        {winner === "me" && "🎉 You won!"}
-        {winner === "opponent" && "😢 You lost!"}
-        {winner === "draw" && "🤝 It's a draw!"}
-        {winner === null && ""}
-      </div>
-      <button style={{ marginTop: 20 }} onClick={handlePlayAgain}>
-        Play Again
-      </button>
-    </div>
-  );
-
   return (
     <div>
+      {/* Use the modular JoinSection component for all join/start UI */}
       {!joined && !isRandomMatching ? (
-        renderJoinSection()
+        <JoinSection
+          username={username}
+          setUsername={setUsername}
+          roomId={roomId}
+          setRoomId={setRoomId}
+          joined={joined}
+          isRandomMatching={isRandomMatching}
+          waitingMsg={waitingMsg}
+          onJoinRoom={handleJoinRoom}
+          onFindRandomMatch={handleFindRandomMatch}
+          onStartSolo={handleStartSolo}
+        />
       ) : (
         <div>
-          <div>
-            <strong>Players:</strong> {players.join(", ")}
-          </div>
+          {gameMode !== SOLO_MODE && (
+            <div>
+              <strong>Players:</strong> {players.join(", ")}
+            </div>
+          )}
           {gameStarted ? (
             <>
               <div>Round: {round} / {MAX_CHANCES}</div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${GRID_SIZE}, 60px)`, gap: "8px" }}>
-                {Array.from({ length: GRID_SIZE }).map((_, row) =>
-                  Array.from({ length: GRID_SIZE }).map((_, col) => {
-                    const isLit = litCell && row === litCell.row && col === litCell.col;
-                    return (
-                      <button
-                        key={`${row}-${col}`}
-                        onClick={() => handleCellClick(row, col)}
-                        style={{
-                          width: 60,
-                          height: 60,
-                          background: isLit ? "yellow" : "#eee",
-                          border: "1px solid #ccc",
-                          fontSize: "1.2rem",
-                          cursor: isLit ? "pointer" : "default",
-                          transition: "background 0.2s"
-                        }}
-                        disabled={!isLit || gameEnded}
-                      >
-                        {isLit ? "👆" : ""}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+              {/* Use the modular GameGrid component */}
+              <GameGrid
+                gridSize={GRID_SIZE}
+                litCell={litCell}
+                onCellClick={handleCellClick}
+                gameEnded={gameEnded}
+              />
               <div>
                 <strong>Your Reaction Times:</strong> {myReactionTimes.join(", ")}
               </div>
-              <div>
-                <strong>Opponent Reaction Times:</strong> {opponentReactionTimes.join(", ")}
-              </div>
+              {gameMode !== SOLO_MODE && (
+                <div>
+                  <strong>Opponent Reaction Times:</strong> {opponentReactionTimes.join(", ")}
+                </div>
+              )}
             </>
           ) : gameEnded ? (
-            renderGameOver()
+            <GameOverPanel
+              mode={gameMode}
+              myReactionTimes={myReactionTimes}
+              opponentReactionTimes={opponentReactionTimes}
+              myAvg={myAvg}
+              opponentAvg={opponentAvg}
+              winner={winner}
+              onPlayAgain={handlePlayAgain}
+            />
           ) : (
             <div>
               {waitingMsg ? (
                 <div style={{ marginTop: 10, color: "#888" }}>{waitingMsg}</div>
               ) : (
-                <div>Waiting for another player...</div>
+                <div>
+                  {gameMode === SOLO_MODE
+                    ? "Get ready for your next round..."
+                    : "Waiting for another player..."}
+                </div>
               )}
             </div>
           )}
