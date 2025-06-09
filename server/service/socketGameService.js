@@ -32,10 +32,12 @@ function setupSocketGame(io) {
   io.on("connection", (socket) => {
     // --- RANDOM MATCHMAKING ---
     socket.on("findRandomMatch", ({ username }) => {
+      console.log("Waiting queue : ", waitingQueue);
       // Check if already in queue
       if (waitingQueue.find((entry) => entry.socket.id === socket.id)) {
         return;
       }
+      console.log(username, " pushed in waiting queue");
       waitingQueue.push({ socket, username });
 
       if (waitingQueue.length >= 2) {

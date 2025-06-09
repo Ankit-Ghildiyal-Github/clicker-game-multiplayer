@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 const GRID_SIZE = 5;
 const MAX_CHANCES = 5;
 
-const socket = io("http://localhost:5000"); // Adjust port as needed
+const socket = io(`${window.location.protocol}//${window.location.hostname}:5000`); // Adjust port as needed
 
 const ReactionGridGame = () => {
   // Core game state
