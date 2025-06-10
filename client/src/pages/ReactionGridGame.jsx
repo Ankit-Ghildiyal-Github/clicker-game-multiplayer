@@ -19,9 +19,9 @@ const SOLO_MODE = "solo";
 const MULTI_ROOM_MODE = "room";
 const MULTI_RANDOM_MODE = "random";
 
-const ReactionGridGame = () => {
+const ReactionGridGame = ({ initialUsername }) => {
   // Core game state
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(initialUsername || "");
   const [roomId, setRoomId] = useState("");
   const [joined, setJoined] = useState(false);
   const [players, setPlayers] = useState([]);
@@ -32,6 +32,7 @@ const ReactionGridGame = () => {
   const [round, setRound] = useState(1);
   const [gameEnded, setGameEnded] = useState(false);
 
+  
   // Game mode state
   const [gameMode, setGameMode] = useState(null);
 
@@ -72,6 +73,15 @@ const ReactionGridGame = () => {
     setJoined,
     setIsRandomMatching,
   });
+
+  // Autofill username if initialUsername changes (e.g., on prop update)
+  useEffect(() => {
+    if (initialUsername && !username) {
+      setUsername(initialUsername);
+    }
+    // Only run on mount or if initialUsername changes
+    // eslint-disable-next-line
+  }, [initialUsername]);
 
   // --- SOLO MODE logic ---
   useEffect(() => {

@@ -56,7 +56,8 @@ function LandingPage() {
           justifyContent: 'center',
         }}
       >
-        <ReactionGridGame />
+        {/* Pass email as initialUsername to ReactionGridGame */}
+        <ReactionGridGame initialUsername={email} />
       </div>
     </div>
   );
