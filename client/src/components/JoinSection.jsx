@@ -18,12 +18,80 @@
  * - onStartSolo: function
  */
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 
+// --- Styles ---
 const styles = {
+  container: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    gap: 32,
+    marginTop: 40,
+    flexWrap: "wrap",
+  },
+  leaderboardCard: {
+    minWidth: 260,
+    maxWidth: 300,
+    padding: "24px 18px",
+    borderRadius: 16,
+    boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
+    background: "#f8fafc",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    marginBottom: 16,
+  },
+  leaderboardHeading: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: "#2a3a4d",
+    marginBottom: 12,
+    textAlign: "center",
+    letterSpacing: "0.5px",
+  },
+  leaderboardList: {
+    listStyle: "none",
+    padding: 0,
+    margin: 0,
+  },
+  leaderboardItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "7px 0",
+    borderBottom: "1px solid #e5e7eb",
+    fontSize: 15,
+    color: "#333",
+  },
+  leaderboardRank: {
+    fontWeight: 600,
+    color: "#4f8cff",
+    marginRight: 8,
+    minWidth: 22,
+    textAlign: "right",
+  },
+  leaderboardName: {
+    flex: 1,
+    fontWeight: 500,
+    color: "#222",
+    marginLeft: 4,
+    marginRight: 8,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  leaderboardTime: {
+    fontFamily: "monospace",
+    color: "#6edb8f",
+    fontWeight: 600,
+    minWidth: 60,
+    textAlign: "right",
+  },
   card: {
     maxWidth: 400,
-    margin: "40px auto",
+    minWidth: 320,
+    margin: "0 auto",
     padding: "32px 24px",
     borderRadius: 16,
     boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
@@ -101,8 +169,71 @@ const styles = {
     fontSize: 15,
     fontStyle: "italic",
   },
+  leaderboardEmpty: {
+    color: "#aaa",
+    textAlign: "center",
+    fontStyle: "italic",
+    marginTop: 12,
+    fontSize: 15,
+  },
 };
 
+// --- Leaderboard Component ---
+function BestScoresLeaderboard() {
+  const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    fetch("/api/best-scores")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted) {
+          setScores(data.bestScores || []);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setScores([]);
+          setLoading(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  return (
+    <div style={styles.leaderboardCard}>
+      <div style={styles.leaderboardHeading}>🏆 Best Reaction Times</div>
+      {loading ? (
+        <div style={styles.leaderboardEmpty}>Loading...</div>
+      ) : scores.length === 0 ? (
+        <div style={styles.leaderboardEmpty}>No scores yet</div>
+      ) : (
+        <ol style={styles.leaderboardList}>
+          {scores.map((score, idx) => (
+            <li key={score.id || idx} style={styles.leaderboardItem}>
+              <span style={styles.leaderboardRank}>{idx + 1}.</span>
+              <span style={styles.leaderboardName}>
+                {score.email.length > 16
+                  ? score.email.slice(0, 13) + "..."
+                  : score.email}
+              </span>
+              <span style={styles.leaderboardTime}>
+                {Number(score.average_time).toFixed(2)} ms
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+// --- Main JoinSection ---
 const JoinSection = ({
   username,
   setUsername,
@@ -113,7 +244,7 @@ const JoinSection = ({
   waitingMsg,
   onJoinRoom,
   onFindRandomMatch,
-  onStartSolo
+  onStartSolo,
 }) => {
   // Only use the username prop and setUsername for input control
   const handleUsernameChange = (e) => {
@@ -121,70 +252,79 @@ const JoinSection = ({
   };
 
   return (
-    <div style={styles.card}>
-      <div style={styles.heading}>Join a Game</div>
-      <div>
-        <div style={styles.label}>Your Name</div>
-        <input
-          style={{
-            ...styles.input,
-            ...(joined || isRandomMatching ? styles.inputDisabled : {}),
-          }}
-          placeholder="Enter your name"
-          value={username}
-          onChange={handleUsernameChange}
-          disabled={joined || isRandomMatching}
-          autoFocus
-        />
+    <div style={styles.container}>
+      <BestScoresLeaderboard />
+      <div style={styles.card}>
+        <div style={styles.heading}>Join a Game</div>
+        <div>
+          <div style={styles.label}>Your Name</div>
+          <input
+            style={{
+              ...styles.input,
+              ...(joined || isRandomMatching ? styles.inputDisabled : {}),
+            }}
+            placeholder="Enter your name"
+            value={username}
+            onChange={handleUsernameChange}
+            disabled={joined || isRandomMatching}
+            autoFocus
+          />
+        </div>
+        <div>
+          <div style={styles.label}>Room ID</div>
+          <input
+            style={{
+              ...styles.input,
+              ...(joined || isRandomMatching ? styles.inputDisabled : {}),
+            }}
+            placeholder="Enter room ID"
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value)}
+            disabled={joined || isRandomMatching}
+          />
+        </div>
+        <div style={styles.buttonRow}>
+          <button
+            style={{
+              ...styles.button,
+              ...((!username || !roomId || joined || isRandomMatching)
+                ? styles.buttonDisabled
+                : {}),
+            }}
+            onClick={onJoinRoom}
+            disabled={!username || !roomId || joined || isRandomMatching}
+          >
+            Join Room
+          </button>
+          <span style={styles.or}>or</span>
+          <button
+            style={{
+              ...styles.button,
+              ...((!username || joined || isRandomMatching)
+                ? styles.buttonDisabled
+                : {}),
+            }}
+            onClick={onFindRandomMatch}
+            disabled={!username || joined || isRandomMatching}
+          >
+            Random Match
+          </button>
+          <span style={styles.or}>or</span>
+          <button
+            style={{
+              ...styles.button,
+              ...((!username || joined || isRandomMatching)
+                ? styles.buttonDisabled
+                : {}),
+            }}
+            onClick={onStartSolo}
+            disabled={!username || joined || isRandomMatching}
+          >
+            Solo
+          </button>
+        </div>
+        {waitingMsg && <div style={styles.waitingMsg}>{waitingMsg}</div>}
       </div>
-      <div>
-        <div style={styles.label}>Room ID</div>
-        <input
-          style={{
-            ...styles.input,
-            ...(joined || isRandomMatching ? styles.inputDisabled : {}),
-          }}
-          placeholder="Enter room ID"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          disabled={joined || isRandomMatching}
-        />
-      </div>
-      <div style={styles.buttonRow}>
-        <button
-          style={{
-            ...styles.button,
-            ...((!username || !roomId || joined || isRandomMatching) ? styles.buttonDisabled : {}),
-          }}
-          onClick={onJoinRoom}
-          disabled={!username || !roomId || joined || isRandomMatching}
-        >
-          Join Room
-        </button>
-        <span style={styles.or}>or</span>
-        <button
-          style={{
-            ...styles.button,
-            ...((!username || joined || isRandomMatching) ? styles.buttonDisabled : {}),
-          }}
-          onClick={onFindRandomMatch}
-          disabled={!username || joined || isRandomMatching}
-        >
-          Random Match
-        </button>
-        <span style={styles.or}>or</span>
-        <button
-          style={{
-            ...styles.button,
-            ...((!username || joined || isRandomMatching) ? styles.buttonDisabled : {}),
-          }}
-          onClick={onStartSolo}
-          disabled={!username || joined || isRandomMatching}
-        >
-          Solo
-        </button>
-      </div>
-      {waitingMsg && <div style={styles.waitingMsg}>{waitingMsg}</div>}
     </div>
   );
 };

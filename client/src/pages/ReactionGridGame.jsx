@@ -4,6 +4,8 @@
  * Main game logic and state orchestration for the Reaction Grid Game.
  * This version uses the custom useMultiplayerSocket hook for multiplayer socket logic.
  * UI is modularized into JoinSection, GameGrid, and GameOverPanel.
+ * 
+ * Updated: Calls /api/best-scores/insert in solo mode when the average is calculated.
  */
 
 import React, { useState, useEffect, useRef } from "react";
@@ -32,7 +34,6 @@ const ReactionGridGame = ({ initialUsername }) => {
   const [round, setRound] = useState(1);
   const [gameEnded, setGameEnded] = useState(false);
 
-  
   // Game mode state
   const [gameMode, setGameMode] = useState(null);
 
@@ -104,6 +105,42 @@ const ReactionGridGame = ({ initialUsername }) => {
     };
     // eslint-disable-next-line
   }, [gameMode, gameStarted, round, resetKey]);
+
+  // --- Insert best score in solo mode when game ends and average is calculated ---
+  useEffect(() => {
+    // Only trigger if in solo mode, game ended, and myAvg is a valid number
+    if (
+      gameMode === SOLO_MODE &&
+      gameEnded &&
+      typeof myAvg === "number" &&
+      username
+    ) {
+      // Call the /api/best-scores/insert API
+      const insertBestScore = async () => {
+        try {
+          const response = await fetch("/api/best-scores/insert", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: username,
+              average_time: myAvg,
+            }),
+          });
+          // Optionally, you can handle the response here (e.g., show a toast)
+          // const data = await response.json();
+          // console.log(data.message);
+        } catch (err) {
+          // Optionally, handle error (e.g., show a toast)
+          // console.error("Failed to insert best score:", err);
+        }
+      };
+      insertBestScore();
+    }
+    // Only run when these change
+    // eslint-disable-next-line
+  }, [gameMode, gameEnded, myAvg, username]);
 
   // --- Handlers ---
   const handleJoinRoom = () => {

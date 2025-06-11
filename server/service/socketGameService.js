@@ -2,6 +2,8 @@ const { Server } = require("socket.io");
 // If you want to use uuid for unique room ids, uncomment the next line and install uuid package
 // const { v4: uuidv4 } = require("uuid");
 
+const bestScoresModel = require("../models/bestScores.model.js"); // <-- Added import
+
 const GRID_SIZE = 5;
 const MAX_CHANCES = 5;
 
@@ -132,6 +134,23 @@ function setupSocketGame(io) {
               reactionTimes: room.reactionTimes,
               players: room.players,
             });
+
+            // --- INSERT BEST SCORES LOGIC HERE ---
+            // For each player, calculate average reaction time and try to insert into best scores
+            room.players.forEach(async (player) => {
+              const times = room.reactionTimes[player.id];
+              if (times && times.length === MAX_CHANCES) {
+                const sum = times.reduce((a, b) => a + b, 0);
+                const avg = sum / times.length;
+                // Use username as email if you don't have email, or adapt as needed
+                try {
+                  await bestScoresModel.tryInsertBestScore(player.username, avg);
+                } catch (err) {
+                  console.error("Error inserting best score for", player.username, err);
+                }
+              }
+            });
+            // --- END BEST SCORES LOGIC ---
           } else {
             room.round += 1;
             setTimeout(() => {

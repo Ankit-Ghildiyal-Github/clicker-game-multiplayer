@@ -3,6 +3,7 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const authRoutes = require("./routes/auth.routes");
+const bestScoresRoutes = require("./routes/bestScores.routes");
 const setupSocketGame = require("./service/socketGameService");
 require("dotenv").config();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 
 // Register authentication routes
 app.use("/api/auth", authRoutes);
+app.use("/api/best-scores", bestScoresRoutes);
 
 // Root route for health check
 app.get("/", (req, res) => {
