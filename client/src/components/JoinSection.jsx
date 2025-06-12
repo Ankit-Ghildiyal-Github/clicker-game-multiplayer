@@ -7,7 +7,6 @@
  * 
  * Props:
  * - username: string
- * - setUsername: function
  * - roomId: string
  * - setRoomId: function
  * - joined: boolean
@@ -176,6 +175,18 @@ const styles = {
     marginTop: 12,
     fontSize: 15,
   },
+  usernameDisplay: {
+    fontSize: 18,
+    fontWeight: 500,
+    color: "#2a3a4d",
+    background: "#f5f7fa",
+    borderRadius: 8,
+    padding: "10px 14px",
+    marginBottom: 8,
+    border: "1px solid #eee",
+    textAlign: "left",
+    letterSpacing: "0.2px",
+  },
 };
 
 // --- Leaderboard Component ---
@@ -236,7 +247,6 @@ function BestScoresLeaderboard() {
 // --- Main JoinSection ---
 const JoinSection = ({
   username,
-  setUsername,
   roomId,
   setRoomId,
   joined,
@@ -246,10 +256,7 @@ const JoinSection = ({
   onFindRandomMatch,
   onStartSolo,
 }) => {
-  // Only use the username prop and setUsername for input control
-  const handleUsernameChange = (e) => {
-    setUsername(e.target.value);
-  };
+  // Username is now display-only, not editable
 
   return (
     <div style={styles.container}>
@@ -258,17 +265,7 @@ const JoinSection = ({
         <div style={styles.heading}>Join a Game</div>
         <div>
           <div style={styles.label}>Your Name</div>
-          <input
-            style={{
-              ...styles.input,
-              ...(joined || isRandomMatching ? styles.inputDisabled : {}),
-            }}
-            placeholder="Enter your name"
-            value={username}
-            onChange={handleUsernameChange}
-            disabled={joined || isRandomMatching}
-            autoFocus
-          />
+          <div style={styles.usernameDisplay}>{username}</div>
         </div>
         <div>
           <div style={styles.label}>Room ID</div>

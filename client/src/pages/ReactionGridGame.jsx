@@ -210,7 +210,6 @@ const ReactionGridGame = ({ initialUsername }) => {
   };
 
   const handlePlayAgain = () => {
-    setUsername("");
     setRoomId("");
     setJoined(false);
     setPlayers([]);
