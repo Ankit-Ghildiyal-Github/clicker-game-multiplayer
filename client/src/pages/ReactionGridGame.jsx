@@ -77,9 +77,7 @@ const ReactionGridGame = ({ initialUsername }) => {
 
   // Autofill username if initialUsername changes (e.g., on prop update)
   useEffect(() => {
-    if (initialUsername && !username) {
-      setUsername(initialUsername);
-    }
+    setUsername(initialUsername);
     // Only run on mount or if initialUsername changes
     // eslint-disable-next-line
   }, [initialUsername]);

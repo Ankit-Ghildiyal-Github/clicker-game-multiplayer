@@ -4,6 +4,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const authRoutes = require("./routes/auth.routes");
 const bestScoresRoutes = require("./routes/bestScores.routes");
+const userDetailsRoutes = require("./routes/userDetails.routes"); // <-- Added import
 const setupSocketGame = require("./service/socketGameService");
 require("dotenv").config();
 
@@ -17,6 +18,7 @@ app.use(express.json());
 // Register authentication routes
 app.use("/api/auth", authRoutes);
 app.use("/api/best-scores", bestScoresRoutes);
+app.use("/api/user-details", userDetailsRoutes); // <-- Register user details routes
 
 // Root route for health check
 app.get("/", (req, res) => {
@@ -53,4 +55,6 @@ server.listen(PORT, () => {
   console.log("  POST   /api/auth/register    - Register a new user");
   console.log("  POST   /api/auth/login       - Login with email and password");
   console.log("  GET    /api/auth/all-users   - List of all users");
+  console.log("  POST   /api/user-details     - Insert or update user details");
+  console.log("  GET    /api/user-details/:id - Fetch user details by id");
 });
