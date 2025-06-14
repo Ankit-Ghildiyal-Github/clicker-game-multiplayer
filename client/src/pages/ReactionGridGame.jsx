@@ -15,6 +15,7 @@ import GameGrid from "../components/GameGrid";
 import GameOverPanel from "../components/GameOverPanel";
 import useMultiplayerSocket from "../hooks/useMultiplayerSocket";
 import BestScoresLeaderboard from "../components/BestScoresLeaderboard";
+import { insertBestScore } from "../components/BestScoresLeaderboard";
 
 const GRID_SIZE = 5;
 const MAX_CHANCES = 5;
@@ -115,28 +116,16 @@ const ReactionGridGame = ({ initialUsername }) => {
       typeof myAvg === "number" &&
       username
     ) {
-      // Call the /api/best-scores/insert API
-      const insertBestScore = async () => {
-        try {
-          const response = await fetch("/api/best-scores/insert", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              email: username,
-              average_time: myAvg,
-            }),
-          });
-          // Optionally, you can handle the response here (e.g., show a toast)
-          // const data = await response.json();
-          // console.log(data.message);
-        } catch (err) {
-          // Optionally, handle error (e.g., show a toast)
-          // console.error("Failed to insert best score:", err);
-        }
-      };
-      insertBestScore();
+      (async () => {
+  try {
+    const response = await insertBestScore(username, myAvg);
+    // Optionally handle the response here
+    // const data = await response.json();
+    // console.log(data.message);
+  } catch (err) {
+    console.error("Failed to insert best score:", err);
+  }
+})();
     }
     // Only run when these change
     // eslint-disable-next-line
