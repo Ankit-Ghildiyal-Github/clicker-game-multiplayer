@@ -6,6 +6,7 @@
  * UI is modularized into JoinSection, GameGrid, and GameOverPanel.
  * 
  * Updated: Calls /api/best-scores/insert in solo mode when the average is calculated.
+ * Now integrates BestScoresLeaderboard at the top of the page.
  */
 
 import React, { useState, useEffect, useRef } from "react";
@@ -13,6 +14,7 @@ import JoinSection from "../components/JoinSection";
 import GameGrid from "../components/GameGrid";
 import GameOverPanel from "../components/GameOverPanel";
 import useMultiplayerSocket from "../hooks/useMultiplayerSocket";
+import BestScoresLeaderboard from "../components/BestScoresLeaderboard";
 
 const GRID_SIZE = 5;
 const MAX_CHANCES = 5;
@@ -64,7 +66,7 @@ const ReactionGridGame = ({ initialUsername }) => {
     setMyReactionTimes,
     setOpponentReactionTimes,
     setRound,
-    setLitCell, // <-- Pass setLitCell to the hook
+    setLitCell,
     setWaitingMsg,
     setWinner,
     setMyAvg,
@@ -228,23 +230,39 @@ const ReactionGridGame = ({ initialUsername }) => {
   };
 
   return (
-    <div>
-      {/* Use the modular JoinSection component for all join/start UI */}
-      {!joined && !isRandomMatching ? (
-        <JoinSection
-          username={username}
-          setUsername={setUsername}
-          roomId={roomId}
-          setRoomId={setRoomId}
-          joined={joined}
-          isRandomMatching={isRandomMatching}
-          waitingMsg={waitingMsg}
-          onJoinRoom={handleJoinRoom}
-          onFindRandomMatch={handleFindRandomMatch}
-          onStartSolo={handleStartSolo}
-        />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      {/* Show leaderboard and join section side by side before joining or random matching */}
+      {(!joined && !isRandomMatching) ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            width: "100%",
+            maxWidth: 900,
+            gap: 32,
+            marginTop: 40,
+            marginBottom: 24,
+          }}
+        >
+          <BestScoresLeaderboard />
+          <JoinSection
+            username={username}
+            setUsername={setUsername}
+            roomId={roomId}
+            setRoomId={setRoomId}
+            joined={joined}
+            isRandomMatching={isRandomMatching}
+            waitingMsg={waitingMsg}
+            onJoinRoom={handleJoinRoom}
+            onFindRandomMatch={handleFindRandomMatch}
+            onStartSolo={handleStartSolo}
+          />
+        </div>
       ) : (
-        <div>
+        // Main game/join UI
+        <div style={{ width: "100%", maxWidth: 900 }}>
           {gameMode !== SOLO_MODE && (
             <div>
               <strong>Players:</strong> {players.join(", ")}
