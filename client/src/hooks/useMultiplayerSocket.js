@@ -3,6 +3,7 @@
  *
  * Custom React hook to encapsulate all multiplayer socket.io logic for the Reaction Grid Game.
  * Now also updates the litCell state in the main component when the server emits newLitCell.
+ * Handles roomAlreadyFilled event and exposes error message setter.
  */
 
 import { useEffect } from "react";
@@ -19,7 +20,7 @@ export default function useMultiplayerSocket({
   setMyReactionTimes,
   setOpponentReactionTimes,
   setRound,
-  setLitCell, // <-- Added
+  setLitCell,
   setWaitingMsg,
   setWinner,
   setMyAvg,
@@ -28,6 +29,7 @@ export default function useMultiplayerSocket({
   setRoomId,
   setJoined,
   setIsRandomMatching,
+  setErrorMsg, // <-- Added for error handling
 }) {
   useEffect(() => {
     if (!enabled) return;
@@ -51,7 +53,7 @@ export default function useMultiplayerSocket({
 
     socket.on("newLitCell", ({ litCell, round }) => {
       setRound(round);
-      setLitCell(litCell); // <-- Update litCell in main component
+      setLitCell(litCell);
     });
 
     socket.on("playerReacted", ({ playerId, reactionTime }) => {
@@ -120,6 +122,16 @@ export default function useMultiplayerSocket({
       setWaitingMsg("");
     });
 
+    // --- Handle roomAlreadyFilled event ---
+    socket.on("roomAlreadyFilled", () => {
+      if (setErrorMsg) {
+        setErrorMsg("Room already filled. Please try another Room ID.");
+      }
+      setJoined(false);
+      setIsRandomMatching(false);
+      setWaitingMsg("");
+    });
+
     return () => {
       socket.off("playersUpdate");
       socket.off("gameStart");
@@ -129,6 +141,7 @@ export default function useMultiplayerSocket({
       socket.off("playerLeft");
       socket.off("waitingForMatch");
       socket.off("matched");
+      socket.off("roomAlreadyFilled");
     };
     // eslint-disable-next-line
   }, [
@@ -140,7 +153,7 @@ export default function useMultiplayerSocket({
     setMyReactionTimes,
     setOpponentReactionTimes,
     setRound,
-    setLitCell, // <-- Added
+    setLitCell,
     setWaitingMsg,
     setWinner,
     setMyAvg,
@@ -149,6 +162,7 @@ export default function useMultiplayerSocket({
     setRoomId,
     setJoined,
     setIsRandomMatching,
+    setErrorMsg, // <-- Added
   ]);
 
   // Expose socket for emits

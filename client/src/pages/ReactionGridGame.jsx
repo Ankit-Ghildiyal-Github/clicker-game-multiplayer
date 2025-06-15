@@ -52,6 +52,7 @@ const ReactionGridGame = ({ initialUsername }) => {
 
   // Used to force a full reset of all state on Play Again
   const [resetKey, setResetKey] = useState(0);
+  const [errorMsg, setErrorMsg] = useState(""); // <-- Error message state
 
   // --- SOLO MODE state ---
   const [soloLitTimeout, setSoloLitTimeout] = useState(null);
@@ -76,6 +77,7 @@ const ReactionGridGame = ({ initialUsername }) => {
     setRoomId,
     setJoined,
     setIsRandomMatching,
+    setErrorMsg,
   });
 
   // Autofill username if initialUsername changes (e.g., on prop update)
@@ -236,6 +238,11 @@ const ReactionGridGame = ({ initialUsername }) => {
           }}
         >
           <BestScoresLeaderboard />
+          <div>
+            {errorMsg && (
+              <div style={{ color: "red", marginBottom: 10 }}>{errorMsg}</div>
+            )}
+            
           <JoinSection
             username={username}
             setUsername={setUsername}
@@ -248,6 +255,7 @@ const ReactionGridGame = ({ initialUsername }) => {
             onFindRandomMatch={handleFindRandomMatch}
             onStartSolo={handleStartSolo}
           />
+        </div>
         </div>
       ) : (
         // Main game/join UI

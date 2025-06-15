@@ -81,14 +81,24 @@ function setupSocketGame(io) {
 
     // --- JOIN BY ROOM ID ---
     socket.on("joinRoom", ({ roomId, username }) => {
+      // Ensure the room exists
       if (!rooms[roomId]) {
         rooms[roomId] = createGameRoom(roomId);
       }
       const room = rooms[roomId];
-      if (room.players.length >= 2) {
-        socket.emit("roomFull");
+
+      // Prevent duplicate joins by the same socket
+      if (room.players.find((p) => p.id === socket.id)) {
+        socket.emit("alreadyInRoom");
         return;
       }
+
+      // Atomically check and add player if room is not full
+      if (room.players.length >= 2) {
+        socket.emit("roomAlreadyFilled");
+        return;
+      }
+
       room.players.push({ id: socket.id, username });
       room.scores[socket.id] = 0;
       room.reactionTimes[socket.id] = [];
