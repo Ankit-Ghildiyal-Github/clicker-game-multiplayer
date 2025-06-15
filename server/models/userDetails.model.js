@@ -25,11 +25,11 @@ async function saveUserDetails(email, username, age) {
 /**
  * Fetch user details by user email.
  * @param {string} email
- * @returns {Promise<{email: string, username: string, age: number} | null>}
+ * @returns {Promise<{email: string, username: string, age: number, tokens: number} | null>}
  */
 async function getUserDetailsByEmail(email) {
   const res = await pool.query(
-    `SELECT email, username, age FROM user_details WHERE email = $1`,
+    `SELECT email, username, age, tokens FROM user_details WHERE email = $1`,
     [email]
   );
   return res.rows[0] || null;

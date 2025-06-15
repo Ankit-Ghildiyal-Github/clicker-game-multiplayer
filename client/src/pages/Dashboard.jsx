@@ -1,14 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import "../styles/DashboardStyles.css";
 
 function UserDashboard() {
   const location = useLocation();
   const email = location.state?.email;
   const [username, setUsername] = useState("");
   const [age, setAge] = useState("");
+  const [tokens, setTokens] = useState(0);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const nameInputRef = useRef(null);
 
   // Fetch user details on mount using email
   useEffect(() => {
@@ -25,26 +31,45 @@ function UserDashboard() {
           const data = await res.json();
           if (data.userDetails) {
             setUsername(data.userDetails.username);
+            setNewUsername(data.userDetails.username);
             setAge(data.userDetails.age);
+            setTokens(data.userDetails.tokens ?? 0);
           }
         }
       } catch (err) {
-        // Ignore if not found
+        setError("Failed to fetch user details.");
       }
     };
     fetchUserDetails();
   }, [email]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    if (editMode && nameInputRef.current) {
+      nameInputRef.current.focus();
+    }
+  }, [editMode]);
+
+  const handleEditClick = () => {
+    setEditMode(true);
     setMessage("");
     setError("");
-    if (!username || !age || !email) {
-      setError("Please fill all fields.");
-      setLoading(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setNewUsername(username);
+    setMessage("");
+    setError("");
+  };
+
+  const handleSaveName = async () => {
+    if (!newUsername || !email) {
+      setError("Name cannot be empty.");
       return;
     }
+    setLoading(true);
+    setError("");
+    setMessage("");
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("/api/user-details", {
@@ -53,107 +78,108 @@ function UserDashboard() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ email, username, age: Number(age) }),
+        body: JSON.stringify({ email, username: newUsername, age: Number(age) }),
       });
-      if (!res.ok) throw new Error("Failed to save details");
-      setMessage("Details saved successfully!");
+      if (!res.ok) throw new Error("Failed to update name");
+      setUsername(newUsername);
+      setEditMode(false);
+      setMessage("Name updated successfully!");
     } catch (err) {
-      setError("Failed to save details.");
+      setError("Failed to update name.");
     }
     setLoading(false);
+  };
+
+  const handleNameInputKeyDown = (e) => {
+    if (!editMode) return;
+    if (e.key === "Enter") {
+      handleSaveName();
+    } else if (e.key === "Escape") {
+      handleCancelEdit();
+    }
   };
 
   if (!email) return null;
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        minWidth: "100vw",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%)",
-        fontFamily: "Segoe UI, Arial, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.15)",
-          borderRadius: "18px",
-          padding: "2.5rem 2rem 2rem 2rem",
-          maxWidth: 420,
-          width: "100%",
-          textAlign: "center",
-          marginBottom: "2rem",
-        }}
-      >
-        <h2 style={{ marginBottom: "1.2rem", fontWeight: 700, fontSize: "2rem", color: "#4f46e5" }}>
-          📝 User Dashboard
-        </h2>
-        <p style={{ color: "#64748b", fontSize: "1.1rem", marginBottom: "1.5rem" }}>
-          Add or update your details below.
-        </p>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
-          <div>
-            <label style={{ fontWeight: 500, color: "#334155" }}>Email:</label>
-            <div style={{ color: "#475569", marginTop: 2 }}>{email}</div>
-          </div>
-          <div>
-            <label style={{ fontWeight: 500, color: "#334155" }}>Username:</label>
-            <input
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.5rem",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e1",
-                marginTop: 4,
-              }}
-              required
-            />
-          </div>
-          <div>
-            <label style={{ fontWeight: 500, color: "#334155" }}>Age:</label>
-            <input
-              type="number"
-              value={age}
-              onChange={e => setAge(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.5rem",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e1",
-                marginTop: 4,
-              }}
-              min={1}
-              required
-            />
-          </div>
+    <div style={{
+      background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)",
+      minHeight: "100vh",
+      margin: 0,
+      padding: 0,
+      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+    }}>
+      {/* Navbar at the top, with landing page link */}
+      <Navbar showDashboardLink={false} email={email} />
+      <div className="dashboard-container">
+        <div className="dashboard-title">User Dashboard</div>
+        <div className="field-row">
+          <span className="field-label">Name:</span>
+          <input
+            ref={nameInputRef}
+            className="field-value"
+            type="text"
+            value={editMode ? newUsername : username}
+            readOnly={!editMode}
+            onChange={e => setNewUsername(e.target.value)}
+            onKeyDown={handleNameInputKeyDown}
+            style={
+              editMode
+                ? {
+                    background: "#fff",
+                    border: "1px solid #3182ce"
+                  }
+                : {}
+            }
+          />
+          {!editMode && (
+            <button className="edit-btn" onClick={handleEditClick}>
+              Edit
+            </button>
+          )}
+          {editMode && (
+            <>
+              <button
+                className="save-btn"
+                onClick={handleSaveName}
+                disabled={loading}
+              >
+                {loading ? "Saving..." : "Save"}
+              </button>
+              <button
+                className="cancel-btn"
+                onClick={handleCancelEdit}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+        <div className="field-row">
+          <span className="field-label">Email:</span>
+          <input className="field-value" type="text" value={email} readOnly />
+        </div>
+        <div className="field-row">
+          <span className="field-label">Age:</span>
+          <input className="field-value" type="text" value={age} readOnly />
+        </div>
+        <div className="field-row">
+          <span className="field-label">Tokens:</span>
+          <input className="field-value" type="text" value={tokens} readOnly />
           <button
-            type="submit"
-            disabled={loading}
-            style={{
-              background: "#6366f1",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              padding: "0.7rem",
-              fontWeight: 600,
-              fontSize: "1rem",
-              cursor: "pointer",
-              marginTop: "0.5rem",
-            }}
+            className="buy-tokens-btn"
+            onClick={() => { /* Dummy for now */ }}
           >
-            {loading ? "Saving..." : "Save Details"}
+            Buy Tokens
           </button>
-        </form>
-        {message && <div style={{ color: "#16a34a", marginTop: "1rem" }}>{message}</div>}
-        {error && <div style={{ color: "#dc2626", marginTop: "1rem" }}>{error}</div>}
+        </div>
+        {message && (
+          <div style={{ color: "#22c55e", marginTop: "10px", textAlign: "center" }}>{message}</div>
+        )}
+        {error && (
+          <div style={{ color: "#e53e3e", marginTop: "10px", textAlign: "center" }}>{error}</div>
+        )}
       </div>
     </div>
   );
