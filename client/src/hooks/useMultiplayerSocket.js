@@ -13,6 +13,12 @@ const socket = io(
   `${window.location.protocol}//${window.location.hostname}:5000`
 );
 
+function leaveRoom() {
+  if (socket && socket.connected) {
+    socket.emit("leaveRoom");
+  }
+}
+
 export default function useMultiplayerSocket({
   enabled,
   resetKey,
@@ -66,7 +72,8 @@ export default function useMultiplayerSocket({
       }
     });
 
-    socket.on("gameOver", ({ reactionTimes, players: serverPlayers }) => {
+    // --- UPDATED GAME OVER HANDLER ---
+    socket.on("gameOver", ({ reactionTimes, averages, players: serverPlayers, winnerLoserMap }) => {
       setGameEnded(true);
       setGameStarted(false);
 
@@ -74,36 +81,40 @@ export default function useMultiplayerSocket({
       let opponent = null;
       let myTimes = [];
       let opponentTimes = [];
+      let myAvgVal = null;
+      let opponentAvgVal = null;
 
       if (serverPlayers && Array.isArray(serverPlayers)) {
         opponent = serverPlayers.find((p) => p.id !== myId);
-        myTimes = reactionTimes?.[myId] || [];
-        opponentTimes = opponent ? reactionTimes?.[opponent.id] || [] : [];
+        myTimes = reactionTimes?.[myId] ?? [];
+        opponentTimes = opponent ? reactionTimes?.[opponent.id] ?? [] : [];
+        myAvgVal = averages?.[myId] ?? null;
+        opponentAvgVal = opponent ? averages?.[opponent.id] ?? null : null;
       }
 
-      setMyReactionTimes(myTimes);
-      setOpponentReactionTimes(opponentTimes);
-
-      const avg = (arr) =>
-        arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const myAvgVal = avg(myTimes);
-      const opponentAvgVal = avg(opponentTimes);
-
+      // If a player disconnected, their reactionTimes and avg may be null
+      setMyReactionTimes(myTimes === null ? [] : myTimes);
+      setOpponentReactionTimes(opponentTimes === null ? [] : opponentTimes);
       setMyAvg(myAvgVal);
       setOpponentAvg(opponentAvgVal);
 
-      if (myAvgVal !== null && opponentAvgVal !== null) {
-        if (myAvgVal < opponentAvgVal) {
+      // Determine winner from winnerLoserMap
+      if (winnerLoserMap) {
+        if (winnerLoserMap.winner === myId) {
           setWinner("me");
-        } else if (myAvgVal > opponentAvgVal) {
+        } else if (winnerLoserMap.loser === myId) {
           setWinner("opponent");
-        } else {
+        } else if (winnerLoserMap.winner === null && winnerLoserMap.loser === null) {
           setWinner("draw");
+        } else {
+          setWinner(null);
         }
       } else {
         setWinner(null);
       }
+
       setLitCell(null); // Clear litCell at game over
+      leaveRoom();
     });
 
     socket.on("playerLeft", () => {
@@ -115,6 +126,7 @@ export default function useMultiplayerSocket({
       setMyAvg(null);
       setOpponentAvg(null);
       setLitCell(null); // Clear litCell if player leaves
+      leaveRoom();
     });
 
     socket.on("waitingForMatch", () => {

@@ -27,6 +27,55 @@ function createGameRoom(roomId) {
   };
 }
 
+// --- Helper function to calculate averages and winner/loser ---
+function calculateAveragesAndWinner(room) {
+  const result = {
+    averages: {},
+    winnerLoserMap: {},
+    reactionTimes: {},
+  };
+
+  // Calculate averages
+  room.players.forEach((player) => {
+    const times = room.reactionTimes[player.id];
+    if (times && times.length === MAX_CHANCES) {
+      const sum = times.reduce((a, b) => a + b, 0);
+      result.averages[player.id] = sum / times.length;
+      result.reactionTimes[player.id] = times;
+    } else {
+      result.averages[player.id] = null;
+      result.reactionTimes[player.id] = times || null;
+    }
+  });
+
+  // Determine winner/loser (draw if equal or missing)
+  const [p1, p2] = room.players;
+  let winnerId = null,
+    loserId = null;
+  if (p1 && p2) {
+    const avg1 = result.averages[p1.id];
+    const avg2 = result.averages[p2.id];
+    if (avg1 !== null && avg2 !== null) {
+      if (avg1 < avg2) {
+        winnerId = p1.id;
+        loserId = p2.id;
+      } else if (avg2 < avg1) {
+        winnerId = p2.id;
+        loserId = p1.id;
+      } else {
+        // Draw
+        winnerId = null;
+        loserId = null;
+      }
+    }
+  }
+  result.winnerLoserMap = {
+    winner: winnerId,
+    loser: loserId,
+  };
+  return result;
+}
+
 function setupSocketGame(io) {
   const rooms = {};
   const waitingQueue = []; // For random matchmaking
@@ -152,18 +201,23 @@ function setupSocketGame(io) {
         if (allReacted) {
           if (room.round >= MAX_CHANCES) {
             room.state = "ended";
+
+            // --- NEW LOGIC: Calculate averages and winner/loser ---
+            const { averages, winnerLoserMap, reactionTimes } =
+              calculateAveragesAndWinner(room);
+
             io.to(roomId).emit("gameOver", {
-              reactionTimes: room.reactionTimes,
+              reactionTimes,
+              averages,
               players: room.players,
+              winnerLoserMap,
             });
 
             // --- INSERT BEST SCORES LOGIC HERE ---
             // For each player, calculate average reaction time and try to insert into best scores
             room.players.forEach(async (player) => {
-              const times = room.reactionTimes[player.id];
-              if (times && times.length === MAX_CHANCES) {
-                const sum = times.reduce((a, b) => a + b, 0);
-                const avg = sum / times.length;
+              const avg = averages[player.id];
+              if (avg !== null) {
                 // Use username as email if you don't have email, or adapt as needed
                 try {
                   await bestScoresModel.tryInsertBestScore(
@@ -190,6 +244,17 @@ function setupSocketGame(io) {
       }
     });
 
+    socket.on("leaveRoom", () => {
+      const roomId = socketToRoom[socket.id];
+      if (roomId) {
+        socket.leave(roomId);
+        delete rooms[roomId];
+        delete socketToRoom[socket.id];
+        console.log("Room Deleted : ", roomId);
+        // Optionally: remove player from room object, clean up if empty, etc.
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
 
@@ -198,6 +263,10 @@ function setupSocketGame(io) {
       if (roomId && rooms[roomId]) {
         const room = rooms[roomId];
 
+        // Find the disconnected player and the remaining player
+        const disconnectedPlayer = room.players.find((p) => p.id === socket.id);
+        const remainingPlayer = room.players.find((p) => p.id !== socket.id);
+
         // 2. Remove the player with the disconnected socket id.
         room.players = room.players.filter((p) => p.id !== socket.id);
         delete room.scores[socket.id];
@@ -205,21 +274,39 @@ function setupSocketGame(io) {
         delete room.chances[socket.id];
 
         // 3. Send playerLeft event to the other player in the same room.
-        if (room.players.length === 1) {
-          const remainingPlayer = room.players[0];
-
+        if (room.players.length === 1 && remainingPlayer) {
           io.to(roomId).emit("playerLeft", {
             leftPlayerId: socket.id,
-            leftPlayerUsername: socket.username || null,
+            leftPlayerUsername: disconnectedPlayer
+              ? disconnectedPlayer.username
+              : null,
             winnerId: remainingPlayer.id,
             winnerUsername: remainingPlayer.username,
           });
 
-          // 4. Declare the other player as winner of the game.
+          // --- NEW LOGIC: Send gameOver with winner/loser and nulls for disconnected ---
+          const winnerId = remainingPlayer.id;
+          const loserId = socket.id;
+          const reactionTimes = {};
+          const averages = {};
+          reactionTimes[winnerId] = room.reactionTimes[winnerId] || [];
+          reactionTimes[loserId] = null;
+          averages[winnerId] =
+            reactionTimes[winnerId].length === MAX_CHANCES
+              ? reactionTimes[winnerId].reduce((a, b) => a + b, 0) /
+                reactionTimes[winnerId].length
+              : null;
+          averages[loserId] = null;
+
           io.to(roomId).emit("gameOver", {
-            winnerId: remainingPlayer.id,
-            winnerUsername: remainingPlayer.username,
-            reason: "opponent_disconnected",
+            reactionTimes,
+            averages,
+            players: [remainingPlayer, disconnectedPlayer],
+            winnerLoserMap: {
+              winner: winnerId,
+              loser: loserId,
+              reason: "opponent_disconnected",
+            },
           });
 
           // 5. Delete the room.
