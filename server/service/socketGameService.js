@@ -30,11 +30,11 @@ function createGameRoom(roomId) {
 function setupSocketGame(io) {
   const rooms = {};
   const waitingQueue = []; // For random matchmaking
+  const socketToRoom = {}; // New: Map socket.id -> roomId
 
   io.on("connection", (socket) => {
     // --- RANDOM MATCHMAKING ---
     socket.on("findRandomMatch", ({ username }) => {
-      console.log("Waiting queue : ", waitingQueue);
       // Check if already in queue
       if (waitingQueue.find((entry) => entry.socket.id === socket.id)) {
         return;
@@ -49,22 +49,30 @@ function setupSocketGame(io) {
 
         // Generate a unique roomId (use uuid or timestamp)
         // const roomId = uuidv4();
-        const roomId = "room_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+        const roomId =
+          "room_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
 
         rooms[roomId] = createGameRoom(roomId);
         const room = rooms[roomId];
 
         // Add both players to the room
         [player1, player2].forEach((player) => {
-          room.players.push({ id: player.socket.id, username: player.username });
+          room.players.push({
+            id: player.socket.id,
+            username: player.username,
+          });
           room.scores[player.socket.id] = 0;
           room.reactionTimes[player.socket.id] = [];
           room.chances[player.socket.id] = 0;
           player.socket.join(roomId);
+          socketToRoom[player.socket.id] = roomId; // <-- Map socket.id to roomId
         });
 
         // Notify both players of the match and room assignment
-        io.to(roomId).emit("matched", { roomId, players: room.players.map((p) => p.username) });
+        io.to(roomId).emit("matched", {
+          roomId,
+          players: room.players.map((p) => p.username),
+        });
 
         // Start the game
         room.state = "running";
@@ -100,10 +108,14 @@ function setupSocketGame(io) {
       }
 
       room.players.push({ id: socket.id, username });
+      console.log(
+        `Player Pushed: SocketId ${socket.id}, Username ${username}, Room ${roomId}`
+      );
       room.scores[socket.id] = 0;
       room.reactionTimes[socket.id] = [];
       room.chances[socket.id] = 0;
       socket.join(roomId);
+      socketToRoom[socket.id] = roomId; // <-- Map socket.id to roomId
 
       io.to(roomId).emit("playersUpdate", {
         players: room.players.map((p) => p.username),
@@ -154,9 +166,16 @@ function setupSocketGame(io) {
                 const avg = sum / times.length;
                 // Use username as email if you don't have email, or adapt as needed
                 try {
-                  await bestScoresModel.tryInsertBestScore(player.username, avg);
+                  await bestScoresModel.tryInsertBestScore(
+                    player.username,
+                    avg
+                  );
                 } catch (err) {
-                  console.error("Error inserting best score for", player.username, err);
+                  console.error(
+                    "Error inserting best score for",
+                    player.username,
+                    err
+                  );
                 }
               }
             });
@@ -172,23 +191,62 @@ function setupSocketGame(io) {
     });
 
     socket.on("disconnect", () => {
-      // Remove player from all rooms
-      for (const roomId in rooms) {
+      console.log(`Socket disconnected: ${socket.id}`);
+
+      // 1. Get the room id using the socketToRoom map.
+      const roomId = socketToRoom[socket.id];
+      if (roomId && rooms[roomId]) {
         const room = rooms[roomId];
+
+        // 2. Remove the player with the disconnected socket id.
         room.players = room.players.filter((p) => p.id !== socket.id);
         delete room.scores[socket.id];
         delete room.reactionTimes[socket.id];
         delete room.chances[socket.id];
-        if (room.players.length === 0) {
+
+        // 3. Send playerLeft event to the other player in the same room.
+        if (room.players.length === 1) {
+          const remainingPlayer = room.players[0];
+
+          io.to(roomId).emit("playerLeft", {
+            leftPlayerId: socket.id,
+            leftPlayerUsername: socket.username || null,
+            winnerId: remainingPlayer.id,
+            winnerUsername: remainingPlayer.username,
+          });
+
+          // 4. Declare the other player as winner of the game.
+          io.to(roomId).emit("gameOver", {
+            winnerId: remainingPlayer.id,
+            winnerUsername: remainingPlayer.username,
+            reason: "opponent_disconnected",
+          });
+
+          // 5. Delete the room.
           delete rooms[roomId];
+
+          // 6. Delete the socket to room mappings for both the players in the room.
+          delete socketToRoom[socket.id];
+          delete socketToRoom[remainingPlayer.id];
+        } else if (room.players.length === 0) {
+          // If no players left, just clean up
+          delete rooms[roomId];
+          delete socketToRoom[socket.id];
         } else {
-          io.to(roomId).emit("playerLeft");
+          // More than 2 players (shouldn't happen in this game), just remove mapping for this socket
+          delete socketToRoom[socket.id];
         }
-      }
-      // Remove from waiting queue if present
-      const idx = waitingQueue.findIndex((entry) => entry.socket.id === socket.id);
-      if (idx !== -1) {
-        waitingQueue.splice(idx, 1);
+      } else {
+        // If not in a room, just remove from waiting queue and mapping
+        const idx = waitingQueue.findIndex(
+          (entry) => entry.socket.id === socket.id
+        );
+        if (idx !== -1) {
+          waitingQueue.splice(idx, 1);
+        }
+        if (socketToRoom[socket.id]) {
+          delete socketToRoom[socket.id];
+        }
       }
     });
   });

@@ -9,7 +9,9 @@
 import { useEffect } from "react";
 import { io } from "socket.io-client";
 
-const socket = io(`${window.location.protocol}//${window.location.hostname}:5000`);
+const socket = io(
+  `${window.location.protocol}//${window.location.hostname}:5000`
+);
 
 export default function useMultiplayerSocket({
   enabled,
@@ -69,14 +71,21 @@ export default function useMultiplayerSocket({
       setGameStarted(false);
 
       const myId = socket.id;
-      const opponent = serverPlayers.find((p) => p.id !== myId);
-      const myTimes = reactionTimes[myId] || [];
-      const opponentTimes = opponent ? reactionTimes[opponent.id] || [] : [];
+      let opponent = null;
+      let myTimes = [];
+      let opponentTimes = [];
+
+      if (serverPlayers && Array.isArray(serverPlayers)) {
+        opponent = serverPlayers.find((p) => p.id !== myId);
+        myTimes = reactionTimes?.[myId] || [];
+        opponentTimes = opponent ? reactionTimes?.[opponent.id] || [] : [];
+      }
 
       setMyReactionTimes(myTimes);
       setOpponentReactionTimes(opponentTimes);
 
-      const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const avg = (arr) =>
+        arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
       const myAvgVal = avg(myTimes);
       const opponentAvgVal = avg(opponentTimes);
 
