@@ -1,8 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+// Import the socket context hook
+import { useSocket } from "../context/SocketContext";
 
 function Navbar({ showDashboardLink, email }) {
   const navigate = useNavigate();
+  const socket = useSocket();
 
   const handleDashboard = () => {
     navigate('/dashboard', { state: { email } });
@@ -13,6 +16,10 @@ function Navbar({ showDashboardLink, email }) {
   };
 
   const handleLogout = () => {
+    // Emit logout event if socket exists and is connected
+    if (socket && socket.connected) {
+      socket.emit("logout");
+    }
     localStorage.removeItem("token");
     navigate('/', { replace: true });
   };
